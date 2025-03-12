@@ -2,6 +2,15 @@ import os
 import requests
 from tqdm import tqdm
 import tarfile
+import pandas as pd
+
+from data_utils.constants import (
+    EventTypes,
+    DAYS_IN_TARGET,
+)
+from data_utils.data_dir import DataDir
+from data_utils.split_data import DataSplitter
+
 
 
 def download_file(url, save_path):
@@ -41,6 +50,24 @@ def extract_and_cleanup(file_path):
     os.remove(file_path)
     print(f"Deleted compressed file: {file_path}")
 
+def split_files(data_dir):
+    print(data_dir)
+    challenge_data_dir = DataDir(data_dir)
+    print(data_dir)
+    product_buy = pd.read_parquet(
+        challenge_data_dir.data_dir / f"{EventTypes.PRODUCT_BUY.value}.parquet"
+    )
+    end_date = pd.to_datetime(product_buy["timestamp"].max())
+
+    splitter = DataSplitter(
+        challenge_data_dir=challenge_data_dir,
+        days_in_target=DAYS_IN_TARGET,
+        end_date=end_date,
+    )
+    splitter.split()
+    splitter.save_splits()
+
+from pathlib import Path
 
 if __name__ == "__main__":
     file_url = "https://data.recsys.synerise.com/dataset/ubc_data/ubc_data.tar.gz"
@@ -48,3 +75,8 @@ if __name__ == "__main__":
 
     filepath = download_file(file_url, save_path)
     extract_and_cleanup(filepath)
+
+    filedir = Path(os.path.dirname(filepath))
+    filedir = Path("/home/itsv.org.sv-services.at/tibor.cus@itsv.at/Projects/personal/recs2025/data")
+    print("Spliting files")
+    split_files(filedir)
