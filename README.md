@@ -50,4 +50,8 @@ Before commiting your code please format it using ruff
 ~~~
 uv run ruff format
 ~~~
-
+## Download data and init repository
+To download and split the data run the following code. Make sure python has permisions to access your directories
+~~~
+uv run python init_repo.py
+~~~
