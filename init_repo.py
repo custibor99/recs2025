@@ -10,7 +10,7 @@ from data_utils.constants import (
 )
 from data_utils.data_dir import DataDir
 from data_utils.split_data import DataSplitter
-
+from pathlib import Path
 
 
 def download_file(url, save_path):
@@ -50,6 +50,7 @@ def extract_and_cleanup(file_path):
     os.remove(file_path)
     print(f"Deleted compressed file: {file_path}")
 
+
 def split_files(data_dir):
     print(data_dir)
     challenge_data_dir = DataDir(data_dir)
@@ -67,7 +68,6 @@ def split_files(data_dir):
     splitter.split()
     splitter.save_splits()
 
-from pathlib import Path
 
 if __name__ == "__main__":
     file_url = "https://data.recsys.synerise.com/dataset/ubc_data/ubc_data.tar.gz"
@@ -77,6 +77,8 @@ if __name__ == "__main__":
     extract_and_cleanup(filepath)
 
     filedir = Path(os.path.dirname(filepath))
-    filedir = Path("/home/itsv.org.sv-services.at/tibor.cus@itsv.at/Projects/personal/recs2025/data")
+    filedir = Path(
+        "/home/itsv.org.sv-services.at/tibor.cus@itsv.at/Projects/personal/recs2025/data"
+    )
     print("Spliting files")
     split_files(filedir)
