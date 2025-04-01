@@ -77,8 +77,5 @@ if __name__ == "__main__":
     extract_and_cleanup(filepath)
 
     filedir = Path(os.path.dirname(filepath))
-    filedir = Path(
-        "/home/itsv.org.sv-services.at/tibor.cus@itsv.at/Projects/personal/recs2025/data"
-    )
     print("Spliting files")
     split_files(filedir)
