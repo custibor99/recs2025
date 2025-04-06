@@ -43,7 +43,6 @@ class BehavioralDataModule(pl.LightningDataModule):
 
     def setup(self, stage) -> None:
         if stage == "fit":
-
             logger.info("Constructing datasets")
 
             self.train_data = BehavioralDataset(

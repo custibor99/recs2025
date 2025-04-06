@@ -28,7 +28,7 @@ class MetricsAggregator:
         """
 
         def extract_weighted_metric(
-            epoch_and_weighted_metric: Tuple[int, float]
+            epoch_and_weighted_metric: Tuple[int, float],
         ) -> float:
             _, weighted_metric = epoch_and_weighted_metric
             return weighted_metric

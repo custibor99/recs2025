@@ -99,7 +99,6 @@ class TaskConstructor:
         self,
         task: PropensityTasks,
     ) -> Tuple[np.ndarray, np.ndarray]:
-
         propensity_targets = np.load(
             self.data_dir.target_dir / f"{task.value}.npy",
             allow_pickle=True,
