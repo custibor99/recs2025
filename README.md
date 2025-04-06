@@ -55,3 +55,19 @@ To download and split the data run the following code. Make sure python has perm
 ~~~
 uv run python init_repo.py
 ~~~
+
+## Generate baseline embeddings
+~~~
+uv run python -m baseline.aggregated_features_baseline.create_embeddings --data-dir data/--embeddings-dir embeddings/
+~~~
+
+## run training pipeline
+without neptune
+~~~
+uv run python -m training_pipeline.train --data-dir data/ --embeddings-dir embeddings/ --tasks churn propensity_category propensity_sku --log-name baseline --accelerator gpu --devices 0 --disable-relevant-clients-check
+~~~
+
+with neptune
+~~~
+uv run python -m training_pipeline.train --data-dir data/ --embeddings-dir embeddings --tasks churn propensity_category propensity_sku --log-name baseline-tibor --accelerator gpu --devices 0 --neptune-api-token <your-token> --neptune-project COSMOS/RECS2025 --disable-relevant-clients-check
+~~~
