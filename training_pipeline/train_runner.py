@@ -54,6 +54,8 @@ def run_training(
     accelerator: str,
     devices: List[int] | str | int,
     neptune_logger: NeptuneLogger,
+    train_sample_size: int | None = None,
+    validation_sample_size: int | None = None,
 ) -> None:
     """
     Function for running the training of a model, with all the training
@@ -77,6 +79,8 @@ def run_training(
         target_calculator=task_settings.target_calculator,
         batch_size=BATCH_SIZE,
         num_workers=num_workers,
+        train_sample_size=train_sample_size,
+        validation_sample_size=validation_sample_size,
     )
 
     model = UniversalModel(
@@ -113,6 +117,8 @@ def run_tasks(
     devices: List[int] | str | int,
     score_dir: Path | None,
     disable_relevant_clients_check: bool,
+    train_sample_size: int | None = None,
+    validation_sample_size: int | None = None,
 ) -> None:
     """
     Function for running a task, i.e. setting up the training, and the starting the training. This method first
@@ -165,6 +171,8 @@ def run_tasks(
             accelerator=accelerator,
             devices=devices,
             neptune_logger=neptune_logger,
+            train_sample_size=train_sample_size,
+            validation_sample_size=validation_sample_size,
         )
         neptune_logger.experiment.stop()
 

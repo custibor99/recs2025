@@ -71,3 +71,9 @@ with neptune
 ~~~
 uv run python -m training_pipeline.train --data-dir data/ --embeddings-dir embeddings --tasks churn propensity_category propensity_sku --log-name baseline-tibor --accelerator gpu --devices 0 --neptune-api-token <your-token> --neptune-project COSMOS/RECS2025 --disable-relevant-clients-check
 ~~~
+
+If training takes too long, you can try using a smaller sampel size for the test/validation dataset:
+
+~~~
+uv run python -m training_pipeline.train --data-dir data/ --embeddings-dir embeddings --tasks churn propensity_category propensity_sku --log-name baseline-tibor --accelerator gpu --devices 0 --neptune-api-token <your-token> --neptune-project COSMOS/RECS2025 --disable-relevant-clients-check --train-sample-size 1024 --validation-sample-size 1024
+~~~

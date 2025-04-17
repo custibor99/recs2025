@@ -2,7 +2,7 @@ import numpy as np
 import pytorch_lightning as pl
 import logging
 
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, RandomSampler
 
 from training_pipeline.dataset import (
     BehavioralDataset,
@@ -32,6 +32,8 @@ class BehavioralDataModule(pl.LightningDataModule):
         target_calculator: TargetCalculator,
         batch_size: int,
         num_workers: int,
+        train_sample_size: int | None = None,
+        validation_sample_size: int | None = None,
     ) -> None:
         super().__init__()
         self.batch_size = batch_size
@@ -40,6 +42,8 @@ class BehavioralDataModule(pl.LightningDataModule):
         self.embeddings = embeddings
         self.target_data = target_data
         self.target_calculator = target_calculator
+        self.train_sample_size = train_sample_size
+        self.validation_sample_size = validation_sample_size
 
     def setup(self, stage) -> None:
         if stage == "fit":
@@ -60,13 +64,21 @@ class BehavioralDataModule(pl.LightningDataModule):
             )
 
     def train_dataloader(self) -> DataLoader:
+        sampler = RandomSampler(self.train_data, num_samples=self.train_sample_size)
         return DataLoader(
-            self.train_data, batch_size=self.batch_size, num_workers=self.num_workers
+            self.train_data,
+            batch_size=self.batch_size,
+            num_workers=self.num_workers,
+            sampler=sampler,
         )
 
     def val_dataloader(self) -> DataLoader:
+        sampler = RandomSampler(
+            self.train_data, num_samples=self.validation_sample_size
+        )
         return DataLoader(
             self.validation_data,
             batch_size=self.batch_size,
             num_workers=self.num_workers,
+            sampler=sampler,
         )

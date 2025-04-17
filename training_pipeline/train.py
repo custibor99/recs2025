@@ -93,6 +93,18 @@ def get_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Disables relevant clients check in validator, but enables embeddings for sets of clients other than relevant clients.",
     )
+    parser.add_argument(
+        "--train-sample-size",
+        required=False,
+        type=int,
+        default=None,
+    )
+    parser.add_argument(
+        "--validation-sample-size",
+        required=False,
+        type=int,
+        default=None,
+    )
     return parser
 
 
@@ -139,6 +151,8 @@ def main(params) -> None:
         devices=parse_devices(params.devices),
         score_dir=score_dir,
         disable_relevant_clients_check=params.disable_relevant_clients_check,
+        train_sample_size=params.train_sample_size,
+        validation_sample_size=params.validation_sample_size,
     )
 
 
