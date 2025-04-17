@@ -58,7 +58,7 @@ uv run python init_repo.py
 
 ## Generate baseline embeddings
 ~~~
-uv run python -m baseline.aggregated_features_baseline.create_embeddings --data-dir data/--embeddings-dir embeddings/
+uv run python -m baseline.aggregated_features_baseline.create_embeddings --data-dir data/ --embeddings-dir embeddings/
 ~~~
 
 ## run training pipeline
