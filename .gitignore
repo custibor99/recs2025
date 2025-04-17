@@ -12,4 +12,7 @@ wheels/
 # Virtual environments
 .venv
 
+# PyCharm
+.idea
+
 !.gitkeep
