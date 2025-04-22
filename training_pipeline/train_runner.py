@@ -159,7 +159,10 @@ def run_tasks(
         )
 
         logger.info("Setting up training logger")
-        neptune_logger = neptune_logger_factory.get_logger(task=task)
+        tags = tags=[task.name.lower()]
+        if validation_sample_size is not None or train_sample_size is not None:
+            tags.append("downsampled")
+        neptune_logger = neptune_logger_factory.get_logger(task=task, tags=tags)
 
         logger.info("Running training")
         run_training(
