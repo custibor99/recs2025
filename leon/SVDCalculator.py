@@ -4,12 +4,12 @@ import pandas as pd
 from scipy.sparse import csr_matrix
 from sklearn.decomposition import TruncatedSVD
 from sklearn.feature_extraction.text import TfidfTransformer
+from sklearn.preprocessing import normalize
 
 logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(level=logging.INFO)
 
-from baseline.aggregated_features_baseline.calculators import Calculator
 
 INTERACTION_WEIGHTS = {
     "product_buy": 5.0,
@@ -23,83 +23,117 @@ def create_user_item_matrix(
     interactions_df: pd.DataFrame,
     relevant_client_ids: np.ndarray,
     weighting_scheme: str = "custom_counts",
+    temporal_decay: float = 0.9,  # Decay factor for temporal weighting
 ):
-    """
-    Creates a sparse user-item matrix with flexible weighting.
-
-    Args:
-        interactions_df: DataFrame with ['client_id', 'sku', 'interaction_type'].
-        relevant_client_ids: Array of client IDs to include in the matrix rows.
-        weighting_scheme: 'binary', 'counts', or 'custom_counts' (using INTERACTION_WEIGHTS).
-
-    Returns:
-        A tuple containing:
-        - The sparse user-item matrix (CSR format).
-        - client_id_map: Dictionary mapping client_id to matrix row index.
-        - item_id_map: Dictionary mapping sku to matrix column index.
-    """
-
     user_id_to_index = {client_id: i for i, client_id in enumerate(relevant_client_ids)}
     n_users = len(relevant_client_ids)
 
     # Filter interactions to only include relevant clients
     interactions_df = interactions_df[
         interactions_df["client_id"].isin(user_id_to_index)
-    ]
+    ].copy()  # copy to avoid warning
+    interactions_df["timestamp"] = pd.to_datetime(interactions_df["timestamp"])
 
+    # Calculate recency weights
+    max_timestamp = interactions_df["timestamp"].max()
+    # Convert time difference to days
+    interactions_df["days_old"] = (
+        max_timestamp - interactions_df["timestamp"]
+    ).dt.total_seconds() / (24 * 3600)
+    # Apply exponential decay
+    interactions_df["recency_weight"] = temporal_decay ** interactions_df["days_old"]
+
+    # Get unique items
     unique_items = interactions_df["sku"].unique()
     item_id_to_index = {sku: i for i, sku in enumerate(unique_items)}
     n_items = len(unique_items)
 
     # Calculate interaction values based on the chosen scheme
     if weighting_scheme == "binary":
-        # Mark 1 for any interaction
-        interactions_df["value"] = 1
-        # Group by user/item and take max (or sum, but max ensures 1) in case of multiple interactions
+        # Mark 1 for any interaction, weighted by recency
+        interactions_df["value"] = interactions_df["recency_weight"]
+        # Group by user/item and take max in case of multiple interactions
         interaction_values = (
             interactions_df.groupby(["client_id", "sku"])["value"].max().reset_index()
         )
     elif weighting_scheme == "counts":
-        # Simple count of interactions
+        # Weight each interaction by recency and sum the weighted counts
+        interactions_df["value"] = interactions_df["recency_weight"]
         interaction_values = (
-            interactions_df.groupby(["client_id", "sku"])
-            .size()
-            .reset_index(name="value")
+            interactions_df.groupby(["client_id", "sku"])["value"].sum().reset_index()
         )
     elif weighting_scheme == "custom_counts":
-        # Apply weights from INTERACTION_WEIGHTS
+        # Apply weights from INTERACTION_WEIGHTS and multiply by recency weight
         interactions_df["value"] = (
             interactions_df["interaction_type"].map(INTERACTION_WEIGHTS).fillna(0)
+            * interactions_df["recency_weight"]
         )
         interaction_values = (
             interactions_df.groupby(["client_id", "sku"])["value"].sum().reset_index()
         )
-        # Optional: Clip negative values if desired (e.g., if remove cancels out add)
-        # interaction_values['value'] = interaction_values['value'].clip(lower=0)
     else:
         raise ValueError(f"Unknown weighting_scheme: {weighting_scheme}")
 
-    # Filter out zero or negative interactions if they resulted from weighting
+    # Filter out zero or negative interactions
     interaction_values = interaction_values[interaction_values["value"] > 0]
 
-    # Map client_ids and skus to their matrix indices
+    # Create the sparse matrix
     row_indices = interaction_values["client_id"].map(user_id_to_index).values
     col_indices = interaction_values["sku"].map(item_id_to_index).values
     data_values = interaction_values["value"].values
 
-    # Create the sparse matrix
     user_item_matrix = csr_matrix(
         (data_values, (row_indices, col_indices)), shape=(n_users, n_items)
     )
 
-    # --- Apply TF-IDF Transformation ---
+    # Apply TF-IDF Transformation
     tfidf_transformer = TfidfTransformer(sublinear_tf=True, norm="l2")
     user_item_matrix_normalized = tfidf_transformer.fit_transform(user_item_matrix)
 
     return user_item_matrix_normalized, user_id_to_index, item_id_to_index
 
 
-class SVDCalculator(Calculator):
+def create_page_visit_matrix(
+    page_visit_df: pd.DataFrame, relevant_client_ids
+) -> csr_matrix:
+    page_visit_df = page_visit_df[page_visit_df["client_id"].isin(relevant_client_ids)]
+    user_id_to_index = {client_id: i for i, client_id in enumerate(relevant_client_ids)}
+    n_users = len(relevant_client_ids)
+
+    # Create user-URL matrix
+    unique_urls = page_visit_df["url"].unique()
+    url_to_index = {url: i for i, url in enumerate(unique_urls)}
+
+    # Count URL visits
+    url_counts = (
+        page_visit_df.groupby(["client_id", "url"]).size().reset_index(name="count")
+    )
+
+    # Map to row and column indices
+    url_row_indices = [
+        user_id_to_index[cid]
+        for cid in url_counts["client_id"]
+        if cid in user_id_to_index
+    ]
+    url_col_indices = [url_to_index[url] for url in url_counts["url"]]
+
+    # Create sparse matrix
+    page_matrix = csr_matrix(
+        (
+            url_counts["count"].values[: len(url_row_indices)],
+            (url_row_indices, url_col_indices[: len(url_row_indices)]),
+        ),
+        shape=(n_users, len(unique_urls)),
+    )
+
+    # Apply TF-IDF
+    tfidf_transformer = TfidfTransformer(sublinear_tf=True, norm="l2")
+    page_matrix = tfidf_transformer.fit_transform(page_matrix)
+
+    return page_matrix
+
+
+class SVDCalculator:
     def __init__(self, embedding_dim: int, n_iter: int):
         self.embedding_dim = embedding_dim
         # Ensure embedding dim does not exceed challenge limits
@@ -110,11 +144,6 @@ class SVDCalculator(Calculator):
             self.embedding_dim = 2048
         self.n_iter = n_iter
         self.random_state = RANDOM_STATE
-
-    @property
-    def features_size(self) -> int:
-        # not needed, maybe delete inheritance entirely
-        return -1
 
     def compute_features(self, user_item_matrix: csr_matrix) -> np.ndarray:
         """Computes user embeddings using TruncatedSVD and converts to float16."""
@@ -136,6 +165,10 @@ class SVDCalculator(Calculator):
         )
 
         user_embeddings_float64 = svd_model.fit_transform(user_item_matrix)
+
+        user_embeddings_float64 = normalize(
+            user_embeddings_float64
+        )  # Normalize to reduce bias for more frequent words
 
         # If effective_embedding_dim was reduced, pad with zeros to reach the target embedding_dim
         if effective_embedding_dim < self.embedding_dim:
