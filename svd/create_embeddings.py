@@ -14,7 +14,7 @@ from data_utils.utils import (
     load_with_properties,
 )
 from data_utils.data_dir import DataDir
-from leon.SVDCalculator import (
+from svd.SVDCalculator import (
     create_user_item_matrix,
     SVDCalculator,
     create_page_visit_matrix,
