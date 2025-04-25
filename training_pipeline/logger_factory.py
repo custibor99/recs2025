@@ -51,7 +51,7 @@ class NeptuneLoggerFactory:
         Returns:
             NeptuneLogger : configured neptune logger
         """
-        logger_name = f"{self.name}:{task.value}"
+        logger_name = f"{self.name}-{task.value}"
         return NeptuneLogger(
             mode=self.mode,
             api_key=self.api_key,
