@@ -14,5 +14,6 @@ wheels/
 
 # PyCharm
 .idea
+.env
 
 !.gitkeep
