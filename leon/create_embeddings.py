@@ -14,41 +14,56 @@ from data_utils.utils import (
     load_with_properties,
 )
 from data_utils.data_dir import DataDir
-from leon.SVDCalculator import create_user_item_matrix, SVDCalculator
+from leon.SVDCalculator import (
+    create_user_item_matrix,
+    SVDCalculator,
+    create_page_visit_matrix,
+)
 
 logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(level=logging.INFO)
 
 
-EMBEDDING_DIM = 128
-SVD_ITERATIONS = 15
+EMBEDDING_DIM = 256
+SVD_ITERATIONS = 10
 
 
 def create_embeddings_svd(
     data_dir: "DataDir",
     relevant_client_ids: np.ndarray,
-    weighting_scheme: str = "custom_counts",  # Options: 'binary', 'counts', 'custom_counts'
+    embedding_dim: int = EMBEDDING_DIM,
+    product_weight: float = 0.6,
+    page_weight: float = 0.2,
 ) -> Tuple[np.ndarray, np.ndarray]:
-    """Generates user embeddings using SVD on an enhanced user-item interaction matrix."""
-
-    logger.info("Loading data...")
+    logger.info("Loading all data types...")
     interactions_df = _load_and_process_data(data_dir)
 
-    logger.info(
-        f"Creating user item matrix using weighting scheme: {weighting_scheme}..."
+    logger.info("Creating product interaction embeddings...")
+    product_matrix, user_id_to_index, _ = create_user_item_matrix(
+        interactions_df,
+        relevant_client_ids,
+        weighting_scheme="custom_counts",
+        temporal_decay=0.9,
     )
-    user_item_matrix, client_id_map, item_id_map = create_user_item_matrix(
-        interactions_df, relevant_client_ids, weighting_scheme=weighting_scheme
-    )
+    product_dim = int(embedding_dim * product_weight)
+    svd_calculator = SVDCalculator(embedding_dim=product_dim, n_iter=SVD_ITERATIONS)
+    product_embeddings = svd_calculator.compute_features(product_matrix)
+    logger.info(f"Created product embeddings with shape: {product_embeddings.shape}")
 
-    logger.info(
-        f"Generating embeddings using SVD with n_components={EMBEDDING_DIM} and n_iter={SVD_ITERATIONS}..."
+    logger.info("Creating page visit embeddings...")
+    page_visit_df = load_with_properties(
+        data_dir=data_dir, event_type=EventTypes.PAGE_VISIT.value
     )
-    svd_calculator = SVDCalculator(embedding_dim=EMBEDDING_DIM, n_iter=SVD_ITERATIONS)
-    embeddings = svd_calculator.compute_features(user_item_matrix)
+    page_matrix = create_page_visit_matrix(page_visit_df, relevant_client_ids)
+    page_dim = int(embedding_dim * page_weight)
+    page_svd = SVDCalculator(embedding_dim=page_dim, n_iter=SVD_ITERATIONS)
+    page_embeddings = page_svd.compute_features(page_matrix)
+    logger.info(f"Created page visit embeddings with shape: {page_embeddings.shape}")
 
-    return relevant_client_ids, embeddings
+    combined_embeddings = np.hstack([product_embeddings, page_embeddings])
+
+    return relevant_client_ids, combined_embeddings
 
 
 def _load_and_process_data(data_dir: "DataDir") -> pd.DataFrame:
