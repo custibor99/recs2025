@@ -1,13 +1,14 @@
 from pandas import DataFrame
 import pandas as pd
-
+from tqdm import tqdm
 
 def split_data(df: DataFrame, test_size=0.25, random_state=42):
     train_rows = []
     val_rows = []
+    n_clients = len(df["client_id"].unique())
 
     # Group by client_id and split interactions per client
-    for client_id, group in df.groupby("client_id"):
+    for client_id, group in tqdm(df.groupby("client_id"), total=n_clients):
         if len(group) == 1:
             # Single interaction stays in train
             train_rows.append(group)
