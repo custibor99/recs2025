@@ -21,19 +21,95 @@ import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Mapping, Tuple, Union
+from typing import List, Mapping, Tuple, Union, Optional
 
 import numpy as np
 import polars as pl
 import scipy.sparse as sp
+import torch
+from torch.utils.data import Dataset
 
 logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(level=logging.INFO)
 
 
+class InteractionDataset(Dataset):
+    """
+    PyTorch ``Dataset`` wrapper around :class:`InteractionData`.
+
+    Each iteration yields a **single client's interaction vector** together with
+    its *original* ``client_id``.
+
+    Example
+    -------
+    >>> from interaction_dataset import InteractionData, InteractionDataset
+    >>> ds = InteractionData.load("path/to/built_dataset")
+    >>> torch_ds = InteractionDataset(ds, to_dense=True)
+    >>> row, client_id = torch_ds[0]
+    >>> row.shape, client_id
+    (torch.Size([n_products]), 12345)
+
+    The dataset supports both dense and sparse PyTorch tensors. For sparse output,
+    set ``to_dense=False`` (default).
+    """
+
+    def __init__(
+        self,
+        interaction_dataset: InteractionData,
+        *,
+        to_dense: bool = True,
+        dtype: torch.dtype = torch.int16,
+        device: Optional[Union[str, torch.device]] = None,
+    ) -> None:
+        """PyTorch ``Dataset`` returning [row_tensor, client_id].
+
+        Parameters
+        ----------
+        interaction_dataset
+            Pre-built :class:`InteractionData` (can be loaded from disk).
+        to_dense
+            If *True* (default), convert the CSR row to a **dense** 1-D ``torch.Tensor``.
+            If *False*, return a **sparse** ``torch.Tensor`` in COO format.
+        dtype
+            ``torch.dtype`` for the interaction values (default ``torch.int16``).
+        device
+            Optional device to place tensors on. If *None*, keep them on CPU.
+        """
+        self._ds = interaction_dataset
+        self._matrix = interaction_dataset.matrix  # SciPy CSR
+        self._client_ids = interaction_dataset.index_to_client_id  # NumPy array
+        self._to_dense = to_dense
+        self._dtype = dtype
+        self._device = device if device is not None else "cpu"
+
+    # ---------------------------------------------------------------------
+    # PyTorch Dataset API
+    # ---------------------------------------------------------------------
+    def __len__(self) -> int:
+        return self._matrix.shape[0]
+
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, Union[int, str]]:
+        """Return *(interaction_row, client_id)* for the given *idx*."""
+
+        row_csr = self._matrix.getrow(idx)  # (1 x n_products)
+
+        if self._to_dense:
+            # Convert to a dense 1‑D tensor
+            tensor = torch.as_tensor(
+                row_csr.toarray(), dtype=self._dtype, device=self._device
+            ).squeeze(0)
+        else:
+            raise NotImplementedError(
+                "Sparse COO tensor construction not implemented yet. "
+            )
+
+        client_id = self._client_ids[idx]
+        return tensor, client_id
+
+
 @dataclass(slots=True)
-class InteractionDataset:
+class InteractionData:
     """Bundle holding the matrix and both id - index mappings."""
 
     matrix: sp.csr_matrix
@@ -60,7 +136,7 @@ class InteractionDataset:
         logger.info("Dataset saved to %s", output_dir)
 
     @classmethod
-    def load(cls, output_dir: Union[str, Path]) -> "InteractionDataset":
+    def load(cls, output_dir: Union[str, Path]) -> "InteractionData":
         """Load an :class:`InteractionDataset` that was saved with :pymeth:`save`."""
         output_dir = Path(output_dir)
         matrix = sp.load_npz(output_dir / "interaction_matrix.npz")
@@ -157,7 +233,7 @@ def build_dataset(
     data_categories: Mapping[str, CategorySpec],
     *,
     dtype=np.int16,
-) -> InteractionDataset:
+) -> InteractionData:
     """Build an :class:`InteractionDataset` from *data_categories*.
 
     Parameters
@@ -188,7 +264,7 @@ def build_dataset(
 
     csr = _to_sparse(interactions, len(idx_to_cli), len(idx_to_prod), dtype=dtype)
 
-    return InteractionDataset(csr, idx_to_cli, idx_to_prod)
+    return InteractionData(csr, idx_to_cli, idx_to_prod)
 
 
 # ---------------------------------------------------------------------------
@@ -203,7 +279,7 @@ if __name__ == "__main__":
         formatter_class=argparse.RawTextHelpFormatter,
         epilog=textwrap.dedent(
             """Example usage:
-              python interaction_matrix_builder.py \\
+              python interaction_dataset.py \\
                 --spec spec.json \\
                 --output cdae/data/output
             ``spec.json`` could look like:
@@ -234,3 +310,31 @@ if __name__ == "__main__":
     ds = build_dataset(category_spec)
     ds.save(args.output)
     print("✅ Dataset built and saved\n")
+
+    # Example usage
+    ds = InteractionData.load(args.output)
+    torch_ds = InteractionDataset(ds, to_dense=True)
+    print(
+        f"Loaded dataset with {len(torch_ds)} clients and {torch_ds._matrix.shape[1]} products\n"
+    )
+
+    row, client_id = torch_ds[1]
+    print(f"Row shape: {row.shape}, Client ID: {client_id}")
+    print("✅ Example usage complete\n")
+
+    from torch.utils.data import DataLoader
+    from tqdm.auto import tqdm
+
+    dl = DataLoader(
+        torch_ds,
+        batch_size=1024,
+        shuffle=False,
+        num_workers=0,
+    )
+
+    for batch in tqdm(dl):
+        row, client_id = batch
+        print(f"Batch shape: {row.shape}, Client IDs: {client_id}")
+        print(f"Batch Memory: {row.element_size() * row.nelement() / (1024**2):.2f} MB")
+
+    print("✅ DataLoader example complete\n")
