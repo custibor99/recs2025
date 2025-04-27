@@ -78,7 +78,7 @@ class InteractionDataset(Dataset):
         """
         self._ds = interaction_dataset
         self._matrix = interaction_dataset.matrix  # SciPy CSR
-        self._client_ids = interaction_dataset.index_to_client_id  # NumPy array
+        self._client_ids = interaction_dataset._index_to_client_id  # NumPy array
         self._to_dense = to_dense
         self._dtype = dtype
         self._device = device if device is not None else "cpu"
@@ -113,8 +113,10 @@ class InteractionData:
     """Bundle holding the matrix and both id - index mappings."""
 
     matrix: sp.csr_matrix
-    index_to_client_id: np.ndarray  # idx - original client_id
-    index_to_product_id: np.ndarray  # idx - original product_id
+    _index_to_client_id: np.ndarray  # idx - original client_id
+    _index_to_product_id: np.ndarray  # idx - original product_id
+    _client_id_to_index: Optional[dict] = None  # original client_id - idx
+    _product_id_to_index: Optional[dict] = None  # original product_id - idx
 
     def save(self, output_dir: Union[str, Path]) -> None:
         """Persist the sparse matrix and mapping arrays.
@@ -130,8 +132,8 @@ class InteractionData:
         output_dir.mkdir(parents=True, exist_ok=True)
 
         sp.save_npz(output_dir / "interaction_matrix.npz", self.matrix)
-        np.save(output_dir / "index_to_client_id.npy", self.index_to_client_id)
-        np.save(output_dir / "index_to_product_id.npy", self.index_to_product_id)
+        np.save(output_dir / "index_to_client_id.npy", self._index_to_client_id)
+        np.save(output_dir / "index_to_product_id.npy", self._index_to_product_id)
 
         logger.info("Dataset saved to %s", output_dir)
 
@@ -140,37 +142,37 @@ class InteractionData:
         """Load an :class:`InteractionDataset` that was saved with :pymeth:`save`."""
         output_dir = Path(output_dir)
         matrix = sp.load_npz(output_dir / "interaction_matrix.npz")
-        index_to_client_id = np.load(output_dir / "index_to_client_id.npy")
-        index_to_product_id = np.load(output_dir / "index_to_product_id.npy")
+        _index_to_client_id = np.load(output_dir / "index_to_client_id.npy")
+        _index_to_product_id = np.load(output_dir / "index_to_product_id.npy")
         logger.info("Dataset loaded from %s", output_dir)
-        return cls(matrix, index_to_client_id, index_to_product_id)
+        return cls(matrix, _index_to_client_id, _index_to_product_id)
 
     # ------------------------------
     # Mapping helpers
     # ------------------------------
     def client_id_to_index(self, client_id: Union[int, str]) -> int:
         """Original ``client_id`` -> contiguous row index."""
-        if not hasattr(self, "_client_id_to_index"):
+        if not self._client_id_to_index:
             self._client_id_to_index = {
-                cid: i for i, cid in enumerate(self.index_to_client_id)
+                cid: i for i, cid in enumerate(self._index_to_client_id)
             }
         return self._client_id_to_index[client_id]
 
     def product_id_to_index(self, product_id: Union[int, str]) -> int:
         """Original ``product_id`` -> contiguous column index."""
-        if not hasattr(self, "_product_id_to_index"):
+        if not self._product_id_to_index:
             self._product_id_to_index = {
-                pid: j for j, pid in enumerate(self.index_to_product_id)
+                pid: j for j, pid in enumerate(self._index_to_product_id)
             }
         return self._product_id_to_index[product_id]
 
     def index_to_client_id(self, idx: int):
         """Row index -> original ``client_id``."""
-        return self.index_to_client_id[idx]
+        return self._index_to_client_id[idx]
 
     def index_to_product_id(self, idx: int):
         """Column index -> original ``product_id``."""
-        return self.index_to_product_id[idx]
+        return self._index_to_product_id[idx]
 
 
 # ---------------------------------------------------------------------------
@@ -191,21 +193,21 @@ def _load_single_category(path: Union[str, Path], effect: int) -> pl.DataFrame:
 
 def _build_mappings(df: pl.DataFrame) -> Tuple[pl.DataFrame, np.ndarray, np.ndarray]:
     """Turn arbitrary ids into contiguous indices and deliver mapping arrays."""
-    index_to_client_id = (
+    _index_to_client_id = (
         df.select("client_id").unique().sort("client_id").to_numpy().flatten()
     )
-    index_to_product_id = (
+    _index_to_product_id = (
         df.select("product_id").unique().sort("product_id").to_numpy().flatten()
     )
 
-    client_id_to_index = {cid: i for i, cid in enumerate(index_to_client_id)}
-    product_id_to_index = {pid: j for j, pid in enumerate(index_to_product_id)}
+    _client_id_to_index = {cid: i for i, cid in enumerate(_index_to_client_id)}
+    _product_id_to_index = {pid: j for j, pid in enumerate(_index_to_product_id)}
 
     df = df.with_columns(
-        pl.col("client_id").replace(client_id_to_index).alias("client_id"),
-        pl.col("product_id").replace(product_id_to_index).alias("product_id"),
+        pl.col("client_id").replace(_client_id_to_index).alias("client_id"),
+        pl.col("product_id").replace(_product_id_to_index).alias("product_id"),
     )
-    return df, index_to_client_id, index_to_product_id
+    return df, _index_to_client_id, _index_to_product_id
 
 
 def _to_sparse(
