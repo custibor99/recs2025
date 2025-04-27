@@ -1,11 +1,9 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader, TensorDataset
-import numpy as np
-from typing import Optional
+from typing import List, Callable
 
-from utils import _get_activation, _get_optimizer
+from cdae.model.utils import _get_activation
 
 
 class CDAE(nn.Module):
@@ -26,25 +24,37 @@ class CDAE(nn.Module):
 
     def __init__(
         self,
-        num_users: int,
-        num_items: int,
+        num_users: List[int],
+        num_items: List[int],
         hidden_dim: int = 64,
         *,
+        index_to_uid: Callable,
+        index_to_iid: Callable,
+        uid_to_index: Callable,
+        iid_to_index: Callable,
         f_act: str = "sigmoid",
         g_act: str = "sigmoid",
         corruption_level: float = 0.3,
     ) -> None:
         super().__init__()
 
+        # self.user_ids = user_ids
+        # self.item_ids = item_ids
         self.num_users = num_users
         self.num_items = num_items
+
+        self.index_to_uid = index_to_uid
+        self.index_to_iid = index_to_iid
+        self.uid_to_index = uid_to_index
+        self.iid_to_index = iid_to_index
+
         self.hidden_dim = hidden_dim
         self.corruption_level = corruption_level
 
         # encoder + decoder
         self.encoder = nn.Linear(self.num_items, self.hidden_dim)
         self.decoder = nn.Linear(self.hidden_dim, self.num_items)
-        # user-specific embedding for first hidden layer
+        # user-specific embedding for hidden layer
         self.user_embedding = nn.Embedding(self.num_users, self.hidden_dim)
 
         # activations
@@ -54,8 +64,9 @@ class CDAE(nn.Module):
     def forward(
         self,
         R: torch.Tensor,  # (B, num_items)
-        user_idx: torch.Tensor,  # (B,)
+        user_id: torch.Tensor,  # (B,)
     ) -> torch.Tensor:
+        
         # 1. corrupt input
         R_tilde = F.dropout(R, p=self.corruption_level, training=self.training)
 
@@ -64,6 +75,9 @@ class CDAE(nn.Module):
         h = self.f_act(self.encoder(h))  # (B, hidden_dim)
 
         # 3. user‑specific embedding
+        user_idx = torch.tensor(
+            [self.uid_to_index(int(uid)) for uid in user_id], device=user_id.device
+        )
         h = h + self.user_embedding(user_idx)
 
         # 4. decode
@@ -71,99 +85,4 @@ class CDAE(nn.Module):
 
         # 5. output to get probs
         x = torch.sigmoid(x)  # (B, num_items)
-        return x
-
-
-class CDAETrainer:
-    def __init__(
-        self,
-        model: CDAE,
-        *,
-        lr: float = 1e-4,
-        optimizer_method: str = "Adam",
-        device: Optional[torch.device | str] = None,
-    ) -> None:
-        self.model = model
-        if device is None:
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.device = device
-        self.model.to(self.device)
-
-        self.opt = _get_optimizer(optimizer_method)(self.model.parameters(), lr=lr)
-
-    def fit_epoch(  # -> fit single epoch
-        self,
-        self_R: torch.Tensor,
-        *,
-        batch_size: int,
-        shuffle: bool = True,
-    ) -> float:
-        self.model.train()
-        dataset = TensorDataset(self_R, torch.arange(self_R.size(0)))  # -> user_idx
-        loader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
-
-        epoch_loss = 0.0
-        for R, usr in loader:
-            R = R.to(self.device)
-            usr = usr.to(self.device)
-
-            self.opt.zero_grad()
-
-            decoded = self.model(R, usr)
-
-            loss = F.binary_cross_entropy(decoded, R, reduction="none").sum(1).mean()
-            loss.backward()
-
-            self.opt.step()
-            epoch_loss += loss.item() * R.size(0)
-
-        return epoch_loss / len(self_R)
-
-    def fit(
-        self,
-        self_R: torch.Tensor,
-        *,
-        batch_size: int,
-        num_epochs: int,
-        shuffle: bool = True,
-    ) -> None:
-        for ep in range(num_epochs):
-            epoch_loss = self.fit_epoch(self_R, batch_size=batch_size, shuffle=shuffle)
-            print(f"Epoch {ep + 1} | Train loss {epoch_loss:.4f}")
-
-    @torch.no_grad()  # no dropout, no corruption
-    def predict(self, R: torch.Tensor) -> torch.Tensor:
-        self.model.eval()
-        user_idx = torch.arange(R.size(0), device=self.device)
-        return self.model(R.to(self.device), user_idx).cpu()
-
-
-# --- EXAMPLE USAGE ---
-
-num_users, num_items = 1000, 10_000
-R_np = (np.random.rand(num_users, num_items) < 0.05).astype(
-    np.float32
-)  # 5% got ratings
-
-cdae = CDAE(
-    num_users=num_users,
-    num_items=num_items,
-    hidden_dim=64,
-    f_act="relu",
-    g_act="relu",
-    corruption_level=0.2,
-)
-
-trainer = CDAETrainer(cdae, lr=1e-3)
-
-R = torch.tensor(R_np)
-
-trainer.fit(
-    self_R=R,
-    batch_size=256,
-    num_epochs=12,
-    shuffle=True,
-)
-
-R_pred = trainer.predict(R)
-print(f"Prediction: {R_pred.shape}")  # (num_users, num_items)
+        return h, x

@@ -11,8 +11,6 @@ def _get_activation(name: str):
         return nn.ReLU6()
     elif name.lower() == "relu":
         return torch.relu
-    elif name.lower() == "elu":
-        return torch.elu
     else:
         raise ValueError(f"Unsupported activation: {name}.")
 
