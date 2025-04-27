@@ -22,6 +22,12 @@ def get_parser() -> argparse.ArgumentParser:
         help="Directory where to save the trained model",
     )
     parser.add_argument(
+        "--hidden-dim",
+        type=int,
+        required=True,
+        help="Hidden dimension for the CDAE model",
+    )
+    parser.add_argument(
         "--num-epochs",
         type=int,
         default=10,
@@ -58,10 +64,11 @@ if __name__ == "__main__":
     BATCH_SIZE = params.batch_size
     LEARNING_RATE = params.learning_rate
     OPTIMIZER = params.optimizer
+    HIDDEN_DIM = params.hidden_dim
 
     print(f"Loading dataset from {DATA_DIR}")
 
-    ds = InteractionData.load("data")
+    ds = InteractionData.load(DATA_DIR)
     torch_ds = InteractionDataset(ds, to_dense=True)
     print(
         f"Loaded dataset with {len(torch_ds)} clients and {torch_ds._matrix.shape[1]} products\n"
@@ -74,7 +81,7 @@ if __name__ == "__main__":
     model = CDAE(
         num_users=num_users,
         num_items=num_items,
-        hidden_dim=64,
+        hidden_dim=HIDDEN_DIM,
         index_to_uid=ds.index_to_client_id,
         index_to_iid=ds.index_to_product_id,
         uid_to_index=ds.client_id_to_index,
