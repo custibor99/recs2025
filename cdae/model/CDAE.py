@@ -60,6 +60,13 @@ class CDAE(nn.Module):
         # activations
         self.f_act = _get_activation(f_act)
         self.g_act = _get_activation(g_act)
+    
+    def load(self, path: str) -> None:
+        state_dict = torch.load(path)
+        self.load_state_dict(state_dict)
+    
+    def save(self, path: str) -> None:
+        torch.save(self.state_dict(), path)
 
     def forward(
         self,

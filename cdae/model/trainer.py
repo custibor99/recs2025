@@ -6,6 +6,7 @@ from torch import nn
 from tqdm import tqdm
 import numpy as np
 from torch.utils.data import DataLoader, TensorDataset
+import os
 
 class CDAETrainer:
     def __init__(
@@ -29,6 +30,7 @@ class CDAETrainer:
         dataloader: torch.utils.data.DataLoader,
         *,
         num_epochs: int,
+        checkpoint_path: Optional[str] = None,
     ) -> None:
         self.model.train()
         for ep in tqdm(range(num_epochs), total=num_epochs, unit="epoch", desc="Training"):
@@ -50,6 +52,9 @@ class CDAETrainer:
 
                 self.opt.step()
                 epoch_loss += loss.item() * R.size(0)
+            
+            if checkpoint_path:
+                self.model.save(os.path.join(checkpoint_path, f"epoch_{ep+1}.pth"))
 
             print(f"Epoch {ep}, Average Loss: {epoch_loss / len(dataloader.dataset)}")
 
@@ -87,4 +92,20 @@ if __name__ == "__main__":
                  iid_to_index=iid_to_index)
     
     trainer = CDAETrainer(model, lr=1e-4, optimizer_method="Adam")
-    trainer.fit(dataloader, num_epochs=10)
+    trainer.fit(dataloader, num_epochs=10, checkpoint_path=".")
+    
+    model = CDAE(num_users=num_users,
+                 num_items=num_items,
+                 hidden_dim=64,
+                 index_to_uid=index_to_uid,
+                 index_to_iid=index_to_iid,
+                 uid_to_index=uid_to_index,
+                 iid_to_index=iid_to_index)
+    
+    model.load("epoch_10.pth")
+    
+    print("Model loaded successfully.")
+    print("Model parameters...")
+    for name, param in model.named_parameters():
+        if param.requires_grad:
+            print(f"{name}")
