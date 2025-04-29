@@ -129,9 +129,8 @@ if __name__ == "__main__":
         device="cuda" if torch.cuda.is_available() else "cpu",
     )
 
-    limited_torch_ds = torch.utils.data.Subset(torch_ds, range(1000))
     dl = DataLoader(
-        limited_torch_ds,
+        torch_ds,
         batch_size=BATCH_SIZE,
         shuffle=True,
         num_workers=0,
