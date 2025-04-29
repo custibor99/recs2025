@@ -7,6 +7,7 @@ from cdae.model.trainer import CDAETrainer
 
 import argparse
 import os
+import neptune
 
 def get_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
@@ -15,12 +16,6 @@ def get_parser() -> argparse.ArgumentParser:
         type=str,
         required=True,
         help="Directory with input and target data - produced by data_utils.interaction_dataset",
-    )
-    parser.add_argument(
-        "--model-save-dir",
-        type=str,
-        required=True,
-        help="Directory where to save the trained model",
     )
     parser.add_argument(
         "--hidden-dim",
@@ -59,6 +54,18 @@ def get_parser() -> argparse.ArgumentParser:
         default=None,
         help="Path to save checkpoints during training, if desired",
     )
+    parser.add_argument(
+        "--neptune-project",
+        type=str,
+        required=True,
+        help="Neptune project name in the format 'workspace/project'",
+    )
+    parser.add_argument(
+        "--neptune-api-token",
+        type=str,
+        required=True,
+        help="Neptune API token for authentication",
+    )
     return parser
 
 if __name__ == "__main__":
@@ -72,9 +79,26 @@ if __name__ == "__main__":
     OPTIMIZER = params.optimizer
     HIDDEN_DIM = params.hidden_dim
     CHECKPOINT_PATH = params.checkpoint_path
-    
+    NEPTUNE_PROJECT = params.neptune_project
+    NEPTUNE_API_TOKEN = params.neptune_api_token
+
     if CHECKPOINT_PATH:
         os.makedirs(CHECKPOINT_PATH, exist_ok=True)
+
+    run = neptune.init_run(
+        project=NEPTUNE_PROJECT,
+        api_token=NEPTUNE_API_TOKEN,
+    )
+
+    run["parameters"] = {
+        "data_dir": DATA_DIR,
+        "hidden_dim": HIDDEN_DIM,
+        "num_epochs": NUM_EPOCHS,
+        "batch_size": BATCH_SIZE,
+        "learning_rate": LEARNING_RATE,
+        "optimizer": OPTIMIZER,
+        "checkpoint_path": CHECKPOINT_PATH,
+    }
 
     print(f"Loading dataset from {DATA_DIR}")
 
@@ -102,20 +126,29 @@ if __name__ == "__main__":
         model,
         lr=LEARNING_RATE,
         optimizer_method=OPTIMIZER,
-        device= "cuda" if torch.cuda.is_available() else "cpu",
+        device="cuda" if torch.cuda.is_available() else "cpu",
     )
 
+    limited_torch_ds = torch.utils.data.Subset(torch_ds, range(1000))
     dl = DataLoader(
-        torch_ds,
+        limited_torch_ds,
         batch_size=BATCH_SIZE,
         shuffle=True,
         num_workers=0,
     )
 
+    def log_metrics(epoch, metrics):
+        run[f"metrics/epoch"].log(epoch)
+        for key, value in metrics.items():
+            run[f"metrics/{key}"].log(value)
+
     trainer.fit(
         dataloader=dl,
         num_epochs=NUM_EPOCHS,
         checkpoint_path=CHECKPOINT_PATH,
+        log_fn=log_metrics,
     )
-    
+
     print("Training completed.")
+
+    run.stop()

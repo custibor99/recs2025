@@ -31,6 +31,7 @@ class CDAETrainer:
         *,
         num_epochs: int,
         checkpoint_path: Optional[str] = None,
+        log_fn: Optional[callable] = None,
     ) -> None:
         self.model.train()
         for ep in tqdm(range(num_epochs), total=num_epochs, unit="epoch", desc="Training"):
@@ -55,7 +56,9 @@ class CDAETrainer:
             
             if checkpoint_path:
                 self.model.save(os.path.join(checkpoint_path, f"epoch_{ep+1}.pth"))
-
+            
+            if log_fn:
+                log_fn(ep, {"loss": epoch_loss / len(dataloader.dataset)})
             print(f"Epoch {ep}, Average Loss: {epoch_loss / len(dataloader.dataset)}")
 
 # --- EXAMPLE USAGE ---
