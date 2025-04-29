@@ -6,6 +6,7 @@ from cdae.model.CDAE import CDAE
 from cdae.model.trainer import CDAETrainer
 
 import argparse
+import os
 
 def get_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
@@ -52,6 +53,12 @@ def get_parser() -> argparse.ArgumentParser:
         choices=["adam", "sgd", "adagrad", "rmsprop"], 
         help="Optimizer to use for training",
     )
+    parser.add_argument(
+        "--checkpoint-path",
+        type=str,
+        default=None,
+        help="Path to save checkpoints during training, if desired",
+    )
     return parser
 
 if __name__ == "__main__":
@@ -59,12 +66,15 @@ if __name__ == "__main__":
     params = parser.parse_args()
 
     DATA_DIR = params.data_dir
-    MODEL_SAVE_DIR = params.model_save_dir
     NUM_EPOCHS = params.num_epochs
     BATCH_SIZE = params.batch_size
     LEARNING_RATE = params.learning_rate
     OPTIMIZER = params.optimizer
     HIDDEN_DIM = params.hidden_dim
+    CHECKPOINT_PATH = params.checkpoint_path
+    
+    if CHECKPOINT_PATH:
+        os.makedirs(CHECKPOINT_PATH, exist_ok=True)
 
     print(f"Loading dataset from {DATA_DIR}")
 
@@ -105,10 +115,7 @@ if __name__ == "__main__":
     trainer.fit(
         dataloader=dl,
         num_epochs=NUM_EPOCHS,
+        checkpoint_path=CHECKPOINT_PATH,
     )
     
-    print(f"Saving model to {MODEL_SAVE_DIR}")
-    torch.save(model.state_dict(), MODEL_SAVE_DIR)
-    print("Model saved successfully.")
     print("Training completed.")
-
