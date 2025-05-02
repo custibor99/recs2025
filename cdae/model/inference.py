@@ -84,6 +84,9 @@ def main() -> None:
     valid_clients = relevant_clients[np.isin(relevant_clients, ds._index_to_client_id)]
     valid_client_idxs = np.array([ds.client_id_to_index(client_id) for client_id in valid_clients])
     
+    print(f"Number of valid clients: {len(valid_clients)}")
+    print(f"Number of total clients: {len(relevant_clients)}")
+
     subset = Subset(torch_ds, valid_client_idxs)
 
     loader = DataLoader(
@@ -97,7 +100,7 @@ def main() -> None:
     embeddings = np.lib.format.open_memmap( # Write to file without loading into memory
         emb_out_file,
         mode='w+',
-        dtype=np.float32,
+        dtype=np.float16,
         shape=(len(valid_clients), args.hidden_dim),
     )
 
